@@ -1,0 +1,777 @@
+---
+title: "Homework5"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+This is the link to the repo: https://github.com/YiyiW02/Homework_5
+
+Problem 1:
+(a)
+```{r}
+library(methods)
+
+# 1. S4 Class and Validator
+
+#' Wald Confidence Interval S4 Class
+#'
+#' Stores a point estimate, standard error, and confidence level.
+#' @slot estimate Point estimate.
+#' @slot se Standard error.
+#' @slot conf Confidence level.
+setClass(
+  "waldCI",
+  slots = c(
+    estimate = "numeric",
+    se = "numeric",
+    conf = "numeric"
+  ),
+  validity = function(object) {
+    if (length(object@estimate) != 1 ||
+        !is.finite(object@estimate)) {
+      return("Estimate must be a single finite number.")
+    }
+
+    if (length(object@se) != 1 ||
+        !is.finite(object@se) ||
+        object@se < 0) {
+      return("Standard error must be finite and non-negative.")
+    }
+
+    if (length(object@conf) != 1 ||
+        !is.finite(object@conf) ||
+        object@conf <= 0 ||
+        object@conf >= 1) {
+      return("Confidence level must be between 0 and 1.")
+    }
+
+    z <- qnorm((1 + object@conf) / 2)
+    lower <- object@estimate - z * object@se
+    upper <- object@estimate + z * object@se
+
+    if (!is.finite(lower) || !is.finite(upper)) {
+      return("Confidence interval bounds must be finite.")
+    }
+
+    TRUE
+  }
+)
+
+
+# 2. Constructor
+
+#' Construct a Wald Confidence Interval
+#'
+#' @param level Confidence level between 0 and 1.
+#' @param mean Point estimate.
+#' @param sterr Standard error.
+#' @param lb Lower confidence bound.
+#' @param ub Upper confidence bound.
+#' @return A valid waldCI object.
+new_waldCI <- function(level, mean = NULL, sterr = NULL,
+                       lb = NULL, ub = NULL) {
+
+  if (!is.numeric(level) ||
+      length(level) != 1 ||
+      !is.finite(level) ||
+      level <= 0 || level >= 1) {
+    stop("Confidence level must be between 0 and 1.")
+  }
+
+  if (!is.null(mean) && !is.null(sterr) &&
+      is.null(lb) && is.null(ub)) {
+
+    if (!is.numeric(mean) || !is.numeric(sterr)) {
+      stop("Mean and standard error must be numeric.")
+    }
+
+    object <- new(
+      "waldCI",
+      estimate = mean,
+      se = sterr,
+      conf = level
+    )
+
+  } else if (!is.null(lb) && !is.null(ub) &&
+             is.null(mean) && is.null(sterr)) {
+
+    if (!is.numeric(lb) || !is.numeric(ub) ||
+        length(lb) != 1 || length(ub) != 1 ||
+        !is.finite(lb) || !is.finite(ub)) {
+      stop("Bounds must be single finite numeric values.")
+    }
+
+    if (lb > ub) {
+      stop("Lower bound cannot exceed upper bound.")
+    }
+
+    z <- qnorm((1 + level) / 2)
+    estimate <- (lb + ub) / 2
+    se <- (ub - lb) / (2 * z)
+
+    object <- new(
+      "waldCI",
+      estimate = estimate,
+      se = se,
+      conf = level
+    )
+
+  } else {
+    stop("Provide either mean and sterr or lb and ub.")
+  }
+
+  validObject(object)
+  object
+}
+
+
+# 3. Show Method
+
+#' Display a Wald Confidence Interval
+#' @param object A waldCI object.
+#' @return Invisibly returns the object.
+setMethod("show", "waldCI", function(object) {
+  cat("Wald Confidence Interval\n")
+  cat("Mean:", object@estimate, "\n")
+  cat("Standard Error:", object@se, "\n")
+  cat("Confidence Level:", object@conf, "\n")
+  cat("Interval: [", 
+      object@estimate - qnorm((1 + object@conf) / 2) * object@se,
+      ",",
+      object@estimate + qnorm((1 + object@conf) / 2) * object@se,
+      "]\n")
+  invisible(object)
+})
+
+
+# 4. Accessors
+
+#' Get the Lower Confidence Bound
+#' @param x A waldCI object.
+#' @return The lower confidence bound.
+setGeneric("lb", function(x) standardGeneric("lb"))
+
+setMethod("lb", "waldCI", function(x) {
+  x@estimate - qnorm((1 + x@conf) / 2) * x@se
+})
+
+#' Get the Upper Confidence Bound
+#' @param x A waldCI object.
+#' @return The upper confidence bound.
+setGeneric("ub", function(x) standardGeneric("ub"))
+
+setMethod("ub", "waldCI", function(x) {
+  x@estimate + qnorm((1 + x@conf) / 2) * x@se
+})
+
+#' Get the Point Estimate
+#' @param x A waldCI object.
+#' @param ... Additional arguments.
+#' @return The point estimate.
+setMethod("mean", "waldCI", function(x, ...) {
+  x@estimate
+})
+
+#' Get the Standard Error
+#' @param x A waldCI object.
+#' @return The standard error.
+setGeneric("sterr", function(x) standardGeneric("sterr"))
+
+setMethod("sterr", "waldCI", function(x) {
+  x@se
+})
+
+#' Get the Confidence Level
+#' @param x A waldCI object.
+#' @return The confidence level.
+setGeneric("level", function(x) standardGeneric("level"))
+
+setMethod("level", "waldCI", function(x) {
+  x@conf
+})
+
+
+# 5. Setters
+
+#' Set the Lower Confidence Bound
+#' @param x A waldCI object.
+#' @param value New lower bound.
+#' @return Updated waldCI object.
+setGeneric("lb<-", function(x, value) standardGeneric("lb<-"))
+
+setReplaceMethod("lb", "waldCI", function(x, value) {
+  new_object <- new_waldCI(
+    level = level(x),
+    lb = value,
+    ub = ub(x)
+  )
+  validObject(new_object)
+  new_object
+})
+
+#' Set the Upper Confidence Bound
+#' @param x A waldCI object.
+#' @param value New upper bound.
+#' @return Updated waldCI object.
+setGeneric("ub<-", function(x, value) standardGeneric("ub<-"))
+
+setReplaceMethod("ub", "waldCI", function(x, value) {
+  new_object <- new_waldCI(
+    level = level(x),
+    lb = lb(x),
+    ub = value
+  )
+  validObject(new_object)
+  new_object
+})
+
+#' Set the Point Estimate
+#' @param x A waldCI object.
+#' @param value New point estimate.
+#' @return Updated waldCI object.
+setGeneric("mean<-", function(x, value) standardGeneric("mean<-"))
+
+setReplaceMethod("mean", "waldCI", function(x, value) {
+  x@estimate <- value
+  validObject(x)
+  x
+})
+
+#' Set the Standard Error
+#' @param x A waldCI object.
+#' @param value New standard error.
+#' @return Updated waldCI object.
+setGeneric("sterr<-", function(x, value) standardGeneric("sterr<-"))
+
+setReplaceMethod("sterr", "waldCI", function(x, value) {
+  x@se <- value
+  validObject(x)
+  x
+})
+
+#' Set the Confidence Level
+#' @param x A waldCI object.
+#' @param value New confidence level.
+#' @return Updated waldCI object.
+setGeneric("level<-", function(x, value) standardGeneric("level<-"))
+
+setReplaceMethod("level", "waldCI", function(x, value) {
+  x@conf <- value
+  validObject(x)
+  x
+})
+
+
+# 6. Contains Method
+
+#' Check Whether Values Are Within a Confidence Interval
+#' @param x A waldCI object.
+#' @param value Numeric value or vector.
+#' @return Logical indicating whether each value is contained.
+setGeneric(
+  "contains",
+  function(x, value) standardGeneric("contains")
+)
+
+setMethod("contains", "waldCI", function(x, value) {
+  if (!is.numeric(value)) {
+    stop("Value must be numeric.")
+  }
+
+  value >= lb(x) & value <= ub(x)
+})
+
+
+# 7. Overlap Method
+
+#' Check Whether Two Confidence Intervals Overlap
+#' @param x First waldCI object.
+#' @param y Second waldCI object.
+#' @return TRUE if the intervals overlap, otherwise FALSE.
+setGeneric(
+  "overlap",
+  function(x, y) standardGeneric("overlap")
+)
+
+setMethod(
+  "overlap",
+  signature(x = "waldCI", y = "waldCI"),
+  function(x, y) {
+    lb(x) <= ub(y) && lb(y) <= ub(x)
+  }
+)
+
+
+# 8. as.numeric Method
+
+#' Convert a Confidence Interval to Numeric Bounds
+#' @param x A waldCI object.
+#' @param ... Additional arguments.
+#' @return Numeric vector containing lower and upper bounds.
+setGeneric("as.numeric")
+
+setMethod("as.numeric", "waldCI", function(x, ...) {
+  c(lb(x), ub(x))
+})
+
+
+# 9. transformCI Method
+
+#' Transform a Wald Confidence Interval
+#'
+#' Only monotonic functions should be used for transformation.
+#' @param x A waldCI object.
+#' @param fun A transformation function.
+#' @return A transformed waldCI object.
+setGeneric(
+  "transformCI",
+  function(x, fun) standardGeneric("transformCI")
+)
+
+setMethod("transformCI", "waldCI", function(x, fun) {
+  if (!is.function(fun)) {
+    stop("Transformation must be a function.")
+  }
+
+  warning("Only monotonic functions should be used.")
+
+  bounds <- fun(c(lb(x), ub(x)))
+
+  if (!is.numeric(bounds) ||
+      length(bounds) != 2 ||
+      any(!is.finite(bounds))) {
+    stop("Transformation must return two finite numeric bounds.")
+  }
+
+  new_waldCI(
+    level = level(x),
+    lb = min(bounds),
+    ub = max(bounds)
+  )
+})
+```
+
+(b)
+```{r}
+ci1 <- new_waldCI(level = 0.95, lb = 17.2, ub = 24.7)
+ci2 <- new_waldCI(level = 0.99, mean = 13, sterr = 2.5)
+ci3 <- new_waldCI(level = 0.75, lb = 27.43, ub = 39.22)
+
+ci1
+ci2
+ci3
+
+as.numeric(ci1)
+as.numeric(ci2)
+as.numeric(ci3)
+
+lb(ci2)
+ub(ci2)
+mean(ci1)
+sterr(ci3)
+level(ci2)
+
+lb(ci2) <- 10.5
+mean(ci3) <- 34
+level(ci3) <- 0.8
+
+contains(ci1, 17)
+contains(ci3, 44)
+
+overlap(ci1, ci2)
+
+eci1 <- transformCI(ci1, sqrt)
+eci1
+
+mean(transformCI(ci2, log))
+```
+
+(c)
+```{r}
+#' Test Whether an Invalid Operation Is Rejected
+#'
+#' @param expr An R expression to evaluate.
+#' @return A message indicating whether an error was caught.
+test_invalid <- function(expr) {
+  tryCatch(
+    {
+      force(expr)
+      cat("Test failed: invalid operation was accepted.\n")
+    },
+    error = function(e) {
+      cat("Error caught:", conditionMessage(e), "\n")
+    }
+  )
+}
+
+# 1. Negative standard error
+test_invalid(
+  new_waldCI(level = 0.95, mean = 10, sterr = -2)
+)
+
+# 2. Lower bound greater than upper bound
+test_invalid(
+  new_waldCI(level = 0.95, lb = 20, ub = 10)
+)
+
+# 3. Infinite bounds
+test_invalid(
+  new_waldCI(level = 0.95, lb = 10, ub = Inf)
+)
+
+# 4. Invalid setters
+ci_invalid <- new_waldCI(
+  level = 0.95,
+  mean = 10,
+  sterr = 2
+)
+
+test_invalid(
+  sterr(ci_invalid) <- -1
+)
+
+test_invalid(
+  level(ci_invalid) <- 1.5
+)
+
+test_invalid(
+  lb(ci_invalid) <- 20
+)
+
+# Verify the original object remains valid
+validObject(ci_invalid)
+```
+The tests demonstrate that invalid confidence intervals are rejected. The constructor prevents negative standard errors, lower bounds greater than upper bounds, and infinite bounds. The setters also reject invalid modifications to an existing object. After these failed operations, the original `waldCI` object remains valid.
+
+
+Problem 2:
+(a)
+```{r}
+library(data.table)
+
+tennis <- fread(
+  "https://raw.githubusercontent.com/azhou5849/tennis-atp-sackmann-data/master/atp_matches_2019.csv"
+)
+
+original_count <- tennis[, uniqueN(tourney_name)]
+
+tennis[grepl("Davis", tourney_name),
+       unique(tourney_name)][1:5]
+
+tennis[, tourney_clean := sub("^Davis.*", "Davis Cup",
+                              tourney_name)]
+
+final_count <- tennis[, uniqueN(tourney_clean)]
+
+data.table(
+  Original_Count = original_count,
+  Final_Count = final_count
+)
+```
+There were 69 unique tournaments in 2019 after combining Davis Cup entries. The original dataset contained 128 distinct tournament names, but different Davis Cup matches were recorded under separate names. Treating these entries as one tournament reduced the total to 69.
+
+(b)
+```{r}
+individual_tennis <- tennis[
+  !grepl("^Davis", tourney_name)
+]
+
+champions <- individual_tennis[round == "F"]
+
+title_counts <- champions[
+  , .(wins = .N),
+  by = winner_name
+][order(-wins)]
+
+multiwinners <- title_counts[wins > 1]
+
+nrow(multiwinners)
+max(title_counts$wins)
+title_counts[wins == max(wins)]
+
+# Check for multiple final matches within the same tournament
+champions[
+  , .N,
+  by = tourney_name
+][N != 1]
+```
+For this analysis, I excluded Davis Cup because it is a team competition and focused on individual tournament titles. I identified tournament champions using the winners of final-round matches (`round == "F"`). Under this definition, 12 players won more than one tournament in 2019. Novak Djokovic and Dominic Thiem tied for the most titles, with five each.
+
+(c)
+```{r}
+aces <- tennis[
+  !is.na(w_ace) & !is.na(l_ace),
+  .(w_ace, l_ace)
+]
+
+aces[, ace_diff := w_ace - l_ace]
+
+ace_summary <- aces[, .(
+  Matches = .N,
+  Mean_Winner_Aces = mean(w_ace),
+  Mean_Loser_Aces = mean(l_ace),
+  Mean_Difference = mean(ace_diff),
+  SD_Difference = sd(ace_diff),
+  Winner_More = sum(ace_diff > 0),
+  Loser_More = sum(ace_diff < 0),
+  Ties = sum(ace_diff == 0)
+)]
+
+ace_summary
+
+ace_test <- ace_summary[, .(
+  t_statistic = Mean_Difference /
+    (SD_Difference / sqrt(Matches)),
+  df = Matches - 1
+)]
+
+ace_test[, p_value := stats::pt(
+  t_statistic,
+  df = df,
+  lower.tail = FALSE
+)]
+
+ace_test
+```
+To examine whether match winners tend to serve more aces than losers, I calculated the difference in ace counts within each match and manually computed a one-sided paired t-test using summary statistics from `data.table`. Matches with missing ace counts were excluded, leaving 2694 matches.
+The null hypothesis is that winners do not serve more aces than losers on average (mean difference ≤ 0). The alternative hypothesis is that winners serve more aces than losers on average (mean difference > 0).
+Winners averaged 7.50 aces per match, compared with 5.79 for losers, with a mean difference of 1.70 aces. The test was statistically significant (t = 12.373, df = 2693, p = 1.53e-34). Therefore, we reject the null hypothesis and conclude that there is strong statistical evidence that winners serve more aces than losers on average. However, this association does not establish causation.
+
+(d)
+```{r}
+player_wins <- tennis[
+  , .(wins = .N),
+  by = .(player = winner_name)
+]
+
+player_losses <- tennis[
+  , .(losses = .N),
+  by = .(player = loser_name)
+]
+
+player_records <- merge(
+  player_wins,
+  player_losses,
+  by = "player",
+  all = TRUE
+)
+
+player_records[is.na(wins), wins := 0L]
+player_records[is.na(losses), losses := 0L]
+
+player_records[
+  , `:=`(
+    matches = wins + losses,
+    winrate = wins / (wins + losses)
+  )
+]
+
+eligible_players <- player_records[
+  matches >= 5
+][order(-winrate, -matches)]
+
+head(eligible_players, 5)
+eligible_players[winrate == max(winrate)]
+```
+Among players who participated in at least five matches in 2019, Rafael Nadal had the highest winning percentage. He won 60 out of 69 matches, achieving a win rate of approximately 86.96%. Novak Djokovic ranked second with 58 wins in 69 matches and a win rate of 84.06%.
+
+
+Problem 3:
+(a)
+```{r}
+library(plotly)
+
+# Load the NYTimes COVID-19 data
+covid <- read.csv(
+  "https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv"
+)
+
+covid$date <- as.Date(covid$date)
+
+covid_us <- aggregate(
+  cases_avg ~ date,
+  data = covid,
+  FUN = sum,
+  na.action = na.omit
+)
+
+p1 <- plot_ly(data = covid_us, x = ~date, y = ~cases_avg, type = "scatter",
+  mode = "lines", line = list(color = "blue", width = 2),
+  hovertemplate = paste(
+    "Date: %{x|%b %d, %Y}",
+    "<br>Daily cases (7-day avg): %{y:,.0f}",
+    "<extra></extra>"
+  )
+) |>
+  layout(
+    title = list(
+      text = "COVID-19 Waves in the United States",
+      x = 0.5
+    ),
+    xaxis = list(
+      title = "Date",
+      rangeslider = list(visible = TRUE)
+    ),
+    yaxis = list(
+      title = "Daily New Cases (7-day Average)",
+      tickformat = ","
+    ),
+    hovermode = "x unified",
+    margin = list(
+      l = 80,
+      r = 30,
+      t = 80,
+      b = 70
+    )
+  )
+
+p1
+```
+Based on visual inspection of the seven-day average of daily new COVID-19 cases, I identified approximately three major waves and three smaller waves in the United States. The major waves peaked around January 2021, September 2021, and January 2022, while smaller waves peaked around July 2020, July 2022, and January 2023.
+The largest peak occurred in January 2022, reaching approximately 800000 daily cases. These waves were classified based on their relative prominence and overall shape rather than a fixed numerical threshold. Nearby local peaks within the same broader wave were counted as one.
+
+(b)
+```{r}
+state_rates <- aggregate(
+  cases_avg_per_100k ~ state,
+  data = covid,
+  FUN = sum,
+  na.rm = TRUE
+)
+
+highest_state <- state_rates$state[
+  which.max(state_rates$cases_avg_per_100k)
+]
+
+lowest_state <- state_rates$state[
+  which.min(state_rates$cases_avg_per_100k)
+]
+
+state_rates[
+  state_rates$state %in% c(highest_state, lowest_state),
+]
+
+covid_compare <- covid[
+  covid$state %in% c(highest_state, lowest_state),
+]
+
+p2 <- plot_ly(
+  data = covid_compare,
+  x = ~date,
+  y = ~cases_avg_per_100k,
+  color = ~state,
+  colors = c("blue", "red"),
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2),
+  hovertemplate = paste(
+    "Date: %{x|%b %d, %Y}",
+    "<br>Cases per 100k: %{y:.1f}",
+    "<extra></extra>"
+  )
+) |>
+  layout(
+    title = list(
+      text = "COVID-19 Trends in States with Highest and Lowest Overall Rates",
+      x = 0.5
+    ),
+    xaxis = list(
+      title = "Date",
+      rangeslider = list(visible = TRUE)
+    ),
+    yaxis = list(
+      title = "Daily New Cases per 100,000 (7-day Average)"
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0.5,
+      xanchor = "center",
+      y = 1.08
+    ),
+    hovermode = "x unified",
+    margin = list(
+      l = 85,
+      r = 30,
+      t = 110,
+      b = 70
+    )
+  )
+
+p2
+```
+Based on the sum of daily seven-day average cases per 100,000 people over the observation period, Rhode Island had the highest overall rate (43295.51), while Maine had the lowest (22020.17).
+Rhode Island experienced sharper COVID-19 waves, particularly in January 2022, when its seven-day average peaked at approximately 500 daily cases per 100,000 people, compared with around 80 in Maine. Rhode Island also had higher peaks in December 2020 and January 2021. However, the two states showed more similar trends during some periods, and Maine occasionally had comparable or higher daily rates. Overall, Rhode Island experienced greater fluctuations and a higher aggregate per-capita case rate over the observation period.
+
+(c)
+```{r}
+covid_early <- subset(
+  covid,
+  date >= as.Date("2020-03-01") &
+    date <= as.Date("2020-05-31") &
+    state %in% state.name
+)
+
+threshold <- 20
+
+first_outbreak <- aggregate(
+  date ~ state,
+  data = subset(
+    covid_early,
+    cases_avg_per_100k >= threshold
+  ),
+  FUN = min
+)
+
+first_outbreak <- first_outbreak[
+  order(first_outbreak$date, first_outbreak$state),
+]
+
+top_five <- head(first_outbreak, 5)
+top_five
+
+covid_top5 <- subset(
+  covid_early,
+  state %in% top_five$state
+)
+
+p3 <- plot_ly(
+  data = covid_top5,
+  x = ~date,
+  y = ~cases_avg_per_100k,
+  color = ~state,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2),
+  hovertemplate = paste(
+    "Date: %{x|%b %d, %Y}",
+    "<br>Cases per 100k: %{y:.1f}",
+    "<extra></extra>"
+  )
+) |>
+  layout(
+    title = list(text = "Early COVID-19 Outbreaks in Five US States",
+      x = 0.5
+    ),
+    xaxis = list(
+      title = "Date", tickformat = "%b %d", dtick = 1209600000
+  ),
+    yaxis = list(
+      title = "Daily New Cases per 100,000 (7-day Average)"
+    ),
+    legend = list(orientation = "h", x = 0.5, xanchor = "center",
+      y = 1.12
+    ),
+    hovermode = "x unified",
+    margin = list(
+      l = 85,
+      r = 30,
+      t = 120,
+      b = 70
+    )
+  )
+
+p3
+```
+To identify the first five states to experience substantial COVID-19 outbreaks, I examined daily new cases per 100000 people from March through May 2020. I defined a substantial outbreak as the first date when the seven-day average reached at least 20 daily cases per 100000 people.
+Under this criterion, the earliest five states were New York (March 25), New Jersey (March 30), Louisiana (April 2), Connecticut (April 8), and Massachusetts (April 9). New York reached the threshold first and had the highest peak, at approximately 50 daily cases per 100,000 people in early April. New Jersey and Louisiana also experienced sharp increases in early April, with peaks of approximately 41 and 34, respectively. Connecticut and Massachusetts reached the threshold later, with their higher case rates occurring in late April. These findings are exploratory and depend on the chosen threshold.
